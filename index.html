@@ -1,0 +1,408 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sparkie — Crystal Canyon</title>
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body { overflow: hidden; background: #000; font-family: 'Georgia', serif; }
+    canvas { display: block; }
+    #hint {
+      position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+      color: rgba(120,200,255,0.5); font-size: 12px; letter-spacing: 0.08em;
+      pointer-events: none; transition: opacity 2s ease;
+    }
+    #title {
+      position: fixed; top: 20px; left: 50%; transform: translateX(-50%);
+      color: rgba(100,220,255,0.5); font-size: 10px; letter-spacing: 0.3em;
+      text-transform: uppercase;
+    }
+  </style>
+</head>
+<body>
+<div id="title">✦ Crystal Canyon ✦</div>
+<div id="hint">drag to orbit · scroll to zoom</div>
+
+<script type="importmap">
+{
+  "imports": {
+    "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+    "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+  }
+}
+</script>
+
+<script type="module">
+import * as THREE from 'three';
+import { OrbitControls } from 'three/addons/controls/OrbitControls.js';
+import { EffectComposer } from 'three/addons/postprocessing/EffectComposer.js';
+import { RenderPass } from 'three/addons/postprocessing/RenderPass.js';
+import { UnrealBloomPass } from 'three/addons/postprocessing/UnrealBloomPass.js';
+
+// ── RENDERER ──────────────────────────────────────────────────────
+const renderer = new THREE.WebGLRenderer({ antialias: true });
+renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
+renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.toneMapping = THREE.ACESFilmicToneMapping;
+renderer.toneMappingExposure = 1.15;
+document.body.appendChild(renderer.domElement);
+
+// ── SCENE & CAMERA ────────────────────────────────────────────────
+const scene = new THREE.Scene();
+scene.fog = new THREE.FogExp2(0x000510, 0.015);
+
+const camera = new THREE.PerspectiveCamera(68, innerWidth / innerHeight, 0.1, 300);
+camera.position.set(0, 8, 30);
+
+// ── CONTROLS ──────────────────────────────────────────────────────
+const controls = new OrbitControls(camera, renderer.domElement);
+controls.enableDamping = true;
+controls.dampingFactor = 0.05;
+controls.autoRotate = true;
+controls.autoRotateSpeed = 0.25;
+controls.maxPolarAngle = Math.PI * 0.7;
+controls.minDistance = 8;
+controls.maxDistance = 65;
+
+// ── POST PROCESSING ───────────────────────────────────────────────
+const composer = new EffectComposer(renderer);
+composer.addPass(new RenderPass(scene, camera));
+const bloom = new UnrealBloomPass(new THREE.Vector2(innerWidth, innerHeight), 1.8, 0.6, 0.1);
+composer.addPass(bloom);
+
+// ── BACKGROUND ─────────────────────────────────────────────────────
+scene.background = new THREE.Color(0x000510);
+
+// ── LIGHTS ─────────────────────────────────────────────────────────
+scene.add(new THREE.AmbientLight(0x001133, 0.8));
+
+// Crystal lights
+const crystalColors = [0x00ffff, 0xff00ff, 0x00ff88, 0xff8800, 0x4488ff, 0xff4488];
+const lights = [];
+crystalColors.forEach((c, i) => {
+  const pl = new THREE.PointLight(c, 3.0, 35);
+  const angle = (i / crystalColors.length) * Math.PI * 2;
+  pl.position.set(Math.cos(angle) * 10, 2 + i * 0.5, Math.sin(angle) * 10);
+  pl.userData.phase = i * 1.1;
+  scene.add(pl);
+  lights.push(pl);
+});
+
+// Top light
+const topLight = new THREE.DirectionalLight(0x88ccff, 0.5);
+topLight.position.set(0, 20, 5);
+scene.add(topLight);
+
+// ── CANYON WALLS ───────────────────────────────────────────────────
+function makeCanyonWall(side) {
+  const group = new THREE.Group();
+  const wallMat = new THREE.MeshStandardMaterial({
+    color: 0x0a0a18, roughness: 0.95, metalness: 0.05
+  });
+
+  // Main wall segments
+  for (let i = 0; i < 8; i++) {
+    const segH = 8 + Math.random() * 14;
+    const segW = 4 + Math.random() * 6;
+    const segD = 3 + Math.random() * 4;
+    const segGeo = new THREE.BoxGeometry(segW, segH, segD);
+    // Distort vertices
+    const pos = segGeo.attributes.position;
+    for (let v = 0; v < pos.count; v++) {
+      pos.setXYZ(v,
+        pos.getX(v) + (Math.random() - 0.5) * 1.5,
+        pos.getY(v) + (Math.random() - 0.5) * 2,
+        pos.getZ(v) + (Math.random() - 0.5) * 1.5
+      );
+    }
+    segGeo.computeVertexNormals();
+    const seg = new THREE.Mesh(segGeo, wallMat);
+    seg.position.set(
+      side * (6 + i * 3.5 + Math.random() * 2),
+      segH / 2 - 4,
+      -20 + i * 5 + Math.random() * 3
+    );
+    group.add(seg);
+  }
+
+  return group;
+}
+scene.add(makeCanyonWall(-1));
+scene.add(makeCanyonWall(1));
+
+// ── CRYSTAL FORMATIONS ────────────────────────────────────────────
+const crystalPalette = [
+  { color: 0x00ffff, emissive: 0x00ffff },
+  { color: 0xff00ff, emissive: 0xff00ff },
+  { color: 0x00ff88, emissive: 0x00ff88 },
+  { color: 0x4488ff, emissive: 0x4488ff },
+  { color: 0xff8844, emissive: 0xff8844 },
+  { color: 0xff4488, emissive: 0xff4488 },
+  { color: 0x88ff00, emissive: 0x88ff00 },
+];
+
+function makeCrystalCluster(pos, scale = 1) {
+  const group = new THREE.Group();
+  const count = 5 + Math.floor(Math.random() * 8);
+
+  for (let i = 0; i < count; i++) {
+    const h = (1.5 + Math.random() * 4.5) * scale;
+    const r = (0.15 + Math.random() * 0.4) * scale;
+    const palette = crystalPalette[Math.floor(Math.random() * crystalPalette.length)];
+    const geo = new THREE.CylinderGeometry(r * 0.3, r, h, 6);
+    const mat = new THREE.MeshPhysicalMaterial({
+      color: palette.color, emissive: palette.emissive,
+      emissiveIntensity: 0.8, transmission: 0.6, thickness: 2,
+      roughness: 0.05, metalness: 0.0
+    });
+    const crystal = new THREE.Mesh(geo, mat);
+    crystal.position.set(
+      (Math.random() - 0.5) * 3 * scale,
+      h / 2,
+      (Math.random() - 0.5) * 3 * scale
+    );
+    crystal.rotation.set(
+      (Math.random() - 0.5) * 0.5,
+      Math.random() * Math.PI * 2,
+      (Math.random() - 0.5) * 0.5
+    );
+    crystal.userData.phase = Math.random() * Math.PI * 2;
+    crystal.userData.baseY = crystal.position.y;
+    group.add(crystal);
+  }
+
+  // Cluster base rock
+  const baseGeo = new THREE.DodecahedronGeometry(1.2 * scale, 0);
+  const baseMat = new THREE.MeshStandardMaterial({ color: 0x0a0815, roughness: 0.9 });
+  const base = new THREE.Mesh(baseGeo, baseMat);
+  base.position.y = -0.3 * scale;
+  group.add(base);
+
+  group.position.copy(pos);
+  return group;
+}
+
+// Scatter crystals along canyon floor
+const crystalPositions = [
+  new THREE.Vector3(-5, -3, -15), new THREE.Vector3(6, -3, -18),
+  new THREE.Vector3(-8, -3, -8), new THREE.Vector3(7, -3, -5),
+  new THREE.Vector3(-3, -3, 0), new THREE.Vector3(5, -3, 3),
+  new THREE.Vector3(-6, -3, -28), new THREE.Vector3(4, -3, -25),
+  new THREE.Vector3(-9, -3, -22), new THREE.Vector3(8, -3, -12),
+  new THREE.Vector3(-4, -3, 8), new THREE.Vector3(3, -3, 10),
+  new THREE.Vector3(-7, -3, 5), new THREE.Vector3(6, -3, 7),
+];
+crystalPositions.forEach(p => {
+  const scale = 0.6 + Math.random() * 1.2;
+  scene.add(makeCrystalCluster(p, scale));
+});
+
+// Central mega crystal cluster
+const megaCluster = makeCrystalCluster(new THREE.Vector3(0, -3, -10), 2.2);
+scene.add(megaCluster);
+
+// ── CRYSTAL STALACTITES FROM WALLS ────────────────────────────────
+{
+  for (let side = -1; side <= 1; side += 2) {
+    for (let i = 0; i < 15; i++) {
+      const h = 2 + Math.random() * 6;
+      const r = 0.2 + Math.random() * 0.5;
+      const palette = crystalPalette[Math.floor(Math.random() * crystalPalette.length)];
+      const stalMat = new THREE.MeshPhysicalMaterial({
+        color: palette.color, emissive: palette.emissive,
+        emissiveIntensity: 0.9, transmission: 0.5, thickness: 1.5, roughness: 0.05
+      });
+      const stalGeo = new THREE.ConeGeometry(r, h, 6);
+      const stal = new THREE.Mesh(stalGeo, stalMat);
+      stal.position.set(
+        side * (12 + Math.random() * 5),
+        -2 + Math.random() * 10,
+        -20 + Math.random() * 35
+      );
+      stal.rotation.z = side * (Math.PI * 0.5 + (Math.random() - 0.5) * 0.4);
+      scene.add(stal);
+    }
+  }
+}
+
+// ── WATER/LAVA RIVER ─────────────────────────────────────────────
+{
+  const riverGeo = new THREE.PlaneGeometry(8, 60, 16, 60);
+  const riverMat = new THREE.ShaderMaterial({
+    uniforms: { uTime: { value: 0 } },
+    vertexShader: `
+      varying vec2 vUv;
+      varying vec3 vPos;
+      void main() {
+        vUv = uv;
+        vPos = position;
+        gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0);
+      }
+    `,
+    fragmentShader: `
+      uniform float uTime;
+      varying vec2 vUv;
+      varying vec3 vPos;
+      float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1, 311.7))) * 43758.5453); }
+      float noise(vec2 p) {
+        vec2 i = floor(p); vec2 f = fract(p);
+        vec2 u = f*f*(3.0-2.0*f);
+        return mix(mix(hash(i),hash(i+vec2(1,0)),u.x), mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),u.x),u.y);
+      }
+      float fbm(vec2 p) {
+        float v = 0.0; float a = 0.5;
+        for (int i = 0; i < 5; i++) { v += a * noise(p); p *= 2.0; a *= 0.5; }
+        return v;
+      }
+      void main() {
+        vec2 uv = vUv;
+        float t = uTime * 0.5;
+        float n1 = fbm(vec2(uv.x * 4.0, uv.y * 2.0 + t));
+        float n2 = fbm(vec2(uv.x * 8.0 + t * 0.3, uv.y * 4.0 - t * 0.2));
+        float flow = sin(uv.y * 8.0 - t * 3.0 + n1 * 2.0) * 0.5 + 0.5;
+        float caustic = fbm(vec2(uv.x * 12.0 + t, uv.y * 6.0 + t * 0.5)) * 0.4;
+        vec3 deep = vec3(0.0, 0.02, 0.15);
+        vec3 shallow = vec3(0.0, 0.08, 0.35);
+        vec3 glow = vec3(0.0, 0.6, 1.0);
+        vec3 col = mix(deep, shallow, n1);
+        col = mix(col, glow, flow * 0.4 + caustic * 0.3);
+        // Edge glow
+        float edge = smoothstep(0.0, 0.15, vUv.x) * smoothstep(1.0, 0.85, vUv.x);
+        col *= 0.3 + edge * 0.7;
+        gl_FragColor = vec4(col, 0.92);
+      }
+    `,
+    transparent: true,
+    depthWrite: false
+  });
+  const river = new THREE.Mesh(riverGeo, riverMat);
+  river.rotation.x = -Math.PI / 2;
+  river.position.y = -4.5;
+  river.position.z = -5;
+  scene.add(river);
+  river.userData.isRiver = true;
+}
+
+// ── FLOATING CRYSTAL SHARDS ────────────────────────────────────────
+{
+  const shardGroup = new THREE.Group();
+  for (let i = 0; i < 40; i++) {
+    const palette = crystalPalette[Math.floor(Math.random() * crystalPalette.length)];
+    const sGeo = new THREE.OctahedronGeometry(0.2 + Math.random() * 0.4, 0);
+    const sMat = new THREE.MeshPhysicalMaterial({
+      color: palette.color, emissive: palette.emissive,
+      emissiveIntensity: 1.2, transmission: 0.7, thickness: 1.0, roughness: 0.0
+    });
+    const shard = new THREE.Mesh(sGeo, sMat);
+    shard.position.set(
+      (Math.random() - 0.5) * 20,
+      -2 + Math.random() * 18,
+      -20 + Math.random() * 40
+    );
+    shard.rotation.set(Math.random() * Math.PI, Math.random() * Math.PI, Math.random() * Math.PI);
+    shard.userData.phase = Math.random() * Math.PI * 2;
+    shard.userData.speed = 0.3 + Math.random() * 0.5;
+    shard.userData.baseY = shard.position.y;
+    shardGroup.add(shard);
+  }
+  scene.add(shardGroup);
+}
+
+// ── MIST / FOG PARTICLES ──────────────────────────────────────────
+{
+  const mistGeo = new THREE.PlaneGeometry(60, 60, 1, 1);
+  const mistMat = new THREE.ShaderMaterial({
+    uniforms: { uTime: { value: 0 } },
+    vertexShader: `varying vec2 vUv; void main() { vUv = uv; gl_Position = projectionMatrix * modelViewMatrix * vec4(position,1.0); }`,
+    fragmentShader: `
+      uniform float uTime;
+      varying vec2 vUv;
+      float hash(vec2 p) { return fract(sin(dot(p, vec2(127.1,311.7))) * 43758.5453); }
+      float noise(vec2 p) {
+        vec2 i = floor(p); vec2 f = fract(p);
+        vec2 u = f*f*(3.0-2.0*f);
+        return mix(mix(hash(i),hash(i+vec2(1,0)),u.x), mix(hash(i+vec2(0,1)),hash(i+vec2(1,1)),u.x),u.y);
+      }
+      void main() {
+        vec2 uv = vUv;
+        float n = noise(uv * 3.0 + uTime * 0.05);
+        n += 0.5 * noise(uv * 6.0 - uTime * 0.03);
+        n *= 0.5;
+        float alpha = smoothstep(0.2, 0.8, n);
+        float radial = 1.0 - smoothstep(0.2, 0.5, length(vUv - 0.5));
+        gl_FragColor = vec4(0.01, 0.02, 0.08, alpha * 0.25 * radial);
+      }
+    `,
+    transparent: true,
+    depthWrite: false
+  });
+  const mist = new THREE.Mesh(mistGeo, mistMat);
+  mist.rotation.x = -Math.PI / 2;
+  mist.position.y = -5;
+  scene.add(mist);
+  mist.userData.isMist = true;
+}
+
+// ── ANIMATION ─────────────────────────────────────────────────────
+const clock = new THREE.Clock();
+const allCrystals = [];
+scene.traverse(obj => {
+  if (obj.isMesh && obj.material?.transmission > 0) {
+    allCrystals.push(obj);
+  }
+});
+
+function animate() {
+  requestAnimationFrame(animate);
+  const t = clock.getElapsedTime();
+
+  // Pulse lights
+  lights.forEach((light, i) => {
+    light.intensity = 3.0 + Math.sin(t * 1.2 + light.userData.phase) * 1.5;
+  });
+
+  // Animate crystals (subtle pulse)
+  allCrystals.forEach(crystal => {
+    if (crystal.userData.phase !== undefined) {
+      const s = 1.0 + Math.sin(t * 0.8 + crystal.userData.phase) * 0.03;
+      crystal.scale.setScalar(s);
+    }
+  });
+
+  // Animate river
+  scene.traverse(obj => {
+    if (obj.isMesh && obj.userData.isRiver && obj.material.uniforms?.uTime) {
+      obj.material.uniforms.uTime.value = t;
+    }
+    if (obj.isMesh && obj.userData.isMist && obj.material.uniforms?.uTime) {
+      obj.material.uniforms.uTime.value = t;
+    }
+  });
+
+  // Animate floating shards
+  shardGroup.children.forEach(shard => {
+    shard.position.y = shard.userData.baseY + Math.sin(t * shard.userData.speed + shard.userData.phase) * 0.8;
+    shard.rotation.x += 0.005;
+    shard.rotation.y += 0.008;
+  });
+
+  controls.update();
+  composer.render();
+}
+
+const shardGroup = scene.children.find(c => c.isGroup && c.children[0]?.geometry?.type === 'OctahedronGeometry');
+animate();
+
+// ── RESIZE ───────────────────────────────────────────────────────
+window.addEventListener('resize', () => {
+  camera.aspect = innerWidth / innerHeight;
+  camera.updateProjectionMatrix();
+  renderer.setSize(innerWidth, innerHeight);
+  composer.setSize(innerWidth, innerHeight);
+});
+
+setTimeout(() => { document.getElementById('hint').style.opacity = '0'; }, 5000);
+</script>
+</body>
+</html>
